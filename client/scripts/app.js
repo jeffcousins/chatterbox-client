@@ -6,6 +6,7 @@ $(document).ready(function() {
     server: 'https://api.parse.com/1/classes/chatterbox/',
     username: 'anonymous',
     room: 'lobby',
+    friends: {},
 
     init: function() {
       app.username = window.location.search.substr(10);
@@ -15,12 +16,59 @@ $(document).ready(function() {
       app.$roomSelect = $('#roomSelect');
       app.$send = $('#send');
 
+      app.$roomSelect.on('change', app.saveRoom);
+      app.$send.on('submit', app.handleSubmit);
+      app.$main.on('click', '.username', app.addFriend);
+
+      app.stopSpinner();
       app.fetch();
+
+      setInterval(app.fetch, 3000);
     },
 
-    send: function() {},
+    saveRoom: function(event) {
+      var selectedIndex = app.$roomSelect.prop('selectedIndex');
+
+      if (selectedIndex === 0) {
+        var roomname = prompt('Enter room name');
+        if (roomname) {
+          app.room = roomname;
+          app.addRoom(roomname);
+          app.$roomSelect.val(roomname);
+
+          app.fetch();
+        }
+      } else {
+        app.room = app.$roomSelect.val();
+        console.log('app.room = ' + app.room);
+
+        app.fetch();
+      }
+    },
+
+    send: function(data) {
+      app.startSpinner();
+
+      $.ajax({
+        url: app.server,
+        type: 'POST',
+        data: JSON.stringify(data),
+        contentType: 'application/json',
+        success: function(result) {
+          app.fetch();
+        },
+        error: function(reason) {
+          console.error('Failed to send data: ', reason);
+        },
+        complete: function() {
+          app.stopSpinner();
+        }
+      })
+    },
 
     fetch: function() {
+      app.startSpinner();
+
       $.ajax({
         url: app.server,
         type: 'GET',
@@ -35,8 +83,19 @@ $(document).ready(function() {
         },
         error: function(reason) {
           console.error('Failed to fetch data: ', reason);
+        },
+        complete: function() {
+          app.stopSpinner();
         }
       })
+    },
+
+    startSpinner: function() {
+      $('.spinner img').show();
+    },
+
+    stopSpinner: function() {
+      $('.spinner img').hide();
     },
 
     populateRooms: function(results) {
@@ -45,6 +104,12 @@ $(document).ready(function() {
 
       if (results) {
         var processedRooms = {};
+
+        if (app.room !== 'lobby') {
+          app.addRoom(app.room);
+          processedRooms[app.room] = true;
+        }
+
         results.forEach(function(data) {
           var roomname = data.roomname;
           if (roomname && !processedRooms[roomname]) {
@@ -83,6 +148,10 @@ $(document).ready(function() {
           .attr('data-roomname', data.roomname)
           .appendTo($chat);
 
+        if (app.friends[data.username] === true) {
+          $username.addClass('friend');
+        }
+
         var $message = $('<br><span>');
         $message.text(data.text)
           .appendTo($chat);
@@ -97,9 +166,27 @@ $(document).ready(function() {
       app.$roomSelect.append($option);
     },
 
-    addFriend: function() {},
+    addFriend: function(event) {
+      var username = $(event.currentTarget).attr('data-username');
+      if (username !== undefined) {
+        console.log('chatterbox: adding %s as a friend', username);
+        app.friends[username] = true;
+        var selector = '[data-username="' + username.replace(/"/g, '\\\"') + '"]';
+        var $username = $(selector).addClass('friend');
+      }
+    },
 
-    handleSubmit: function() {},
+    handleSubmit: function(event) {
+      event.preventDefault();
+
+      var message = {
+        username: app.username,
+        roomname: app.room || 'lobby',
+        text: app.$message.val()
+      };
+
+      app.send(message);
+    },
 
   };
 });
